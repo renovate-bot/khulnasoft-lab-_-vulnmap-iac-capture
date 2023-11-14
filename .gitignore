@@ -16,6 +16,4 @@ dist/
 # JetBrains IDEs
 .idea/
 
-vulnmap-iac-capture
-
 .vscode/
