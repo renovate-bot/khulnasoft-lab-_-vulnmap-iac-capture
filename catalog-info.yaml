@@ -1,0 +1,19 @@
+# Documentation: https://www.notion.so/vulnmap/Entity-Metadata-1e313ca03f954a6680b2b6b7b3d95297
+# Validation Tool: https://github.com/khulnasoft-lab/prodsec-github-bot
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: vulnmap-iac-capture
+  annotations:
+    github.com/project-slug: khulnasoft-lab/vulnmap-iac-capture
+    circleci.com/project-slug: github/khulnasoft-lab/vulnmap-iac-capture
+    github.com/team-slug: vulnmap/cloud-dev-ex
+  description: < A Golang CLI that sends state artifact to Vulnmap's Cloud API to find mappings between Cloud and IaC resources.
+  labels:
+    vulnmap.khulnasoft.com/businessCriticality: medium
+    vulnmap.khulnasoft.com/visibility: private
+    vulnmap.khulnasoft.com/metadata-version: "2022-23-01"
+spec:
+  type: vulnmap-cli-plugin
+  lifecycle: "-"
+  owner: cloud-dev-ex

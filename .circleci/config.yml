@@ -1,0 +1,191 @@
+version: 2.1
+
+orbs:
+  prodsec: vulnmap/prodsec-orb@1.0
+  vulnmap: vulnmap/vulnmap@1.4.0
+
+executors:
+  default:
+    docker:
+      - image: cimg/go:1.19.4
+
+commands:
+  run-with-go-cache:
+    parameters:
+      tag:
+        type: string
+      steps:
+        type: steps
+    steps:
+      - checkout
+      - add_ssh_keys:
+          fingerprints:
+            - "13:48:8d:8e:35:19:6d:a2:2b:a4:57:4e:b9:3e:ab:a0"
+      - restore_cache:
+          keys:
+            - go-mod-v1-<< parameters.tag >>-{{ checksum "go.mod" }}-{{ checksum "go.sum" }}
+      - steps: << parameters.steps >>
+      - save_cache:
+          key: go-mod-v1-<< parameters.tag >>-{{ checksum "go.mod" }}-{{ checksum "go.sum" }}
+          when: always
+          paths:
+            - ~/go/pkg/mod
+            - ~/.cache/go-build
+
+jobs:
+  tidy:
+    executor: default
+    steps:
+      - run-with-go-cache:
+          tag: tidy
+          steps:
+            - run:
+                name: Check that go.mod is tidy
+                command: go mod tidy && git diff --exit-code go.mod go.sum
+
+  format:
+    executor: default
+    steps:
+      - run-with-go-cache:
+          tag: format
+          steps:
+            - run:
+                name: Check formatting
+                command: test -z $(go fmt ./...)
+
+  build:
+    executor: default
+    steps:
+      - run-with-go-cache:
+          tag: build
+          steps:
+            - run:
+                name: Build
+                command: go build ./...
+
+  test:
+    executor: default
+    steps:
+      - run-with-go-cache:
+          tag: test
+          steps:
+            - run:
+                name: Test
+                command: make test
+
+  lint:
+    executor: default
+    steps:
+      - run-with-go-cache:
+          tag: lint
+          steps:
+            - run:
+                name: Run golangci-lint
+                command: make lint
+
+  vulnmap-oss:
+    executor: default
+    steps:
+      - run-with-go-cache:
+          tag: vulnmap-oss
+          steps:
+            - vulnmap/scan:
+                severity-threshold: high
+                monitor-on-build: false
+                project: ${CIRCLE_PROJECT_REPONAME}
+                organization: cloud-cloud
+
+  vulnmap-code:
+    executor: default
+    steps:
+      - run-with-go-cache:
+          tag: vulnmap-code
+          steps:
+            - vulnmap/scan:
+                command: code test
+                severity-threshold: high
+                monitor-on-build: false
+                project: ${CIRCLE_PROJECT_REPONAME}
+                organization: cloud-cloud
+
+  release:
+    executor: default
+    steps:
+      - run-with-go-cache:
+          tag: release
+          steps:
+            - run:
+                name: Push new tag to GitHub
+                command: make tag
+            - run:
+                name: Release binaries to GitHub
+                command: make release
+
+workflows:
+  version: 2
+  ci:
+    unless:
+      equal: [ <<pipeline.git.branch>>, main ]
+    jobs:
+      - prodsec/secrets-scan:
+          name: Scan repository for secrets
+          context:
+            - vulnmap-bot-slack
+          channel: group-infrastructure-as-code-alerts
+      - tidy:
+          name: Tidy
+          context: vulnmap-iac-capture
+      - format:
+          name: Format
+          context: vulnmap-iac-capture
+      - build:
+          name: Build
+          context: vulnmap-iac-capture
+      - test:
+          name: Test
+          context: vulnmap-iac-capture
+      - lint:
+          name: Lint
+          context: vulnmap-iac-capture
+      - vulnmap-oss:
+          name: Vulnmap Open Source
+          context: vulnmap-iac-capture
+      - vulnmap-code:
+          name: Vulnmap Code
+          context: vulnmap-iac-capture
+  release:
+    when:
+      equal: [ <<pipeline.git.branch>>, main ]
+    jobs:
+      - tidy:
+          name: Tidy
+          context: vulnmap-iac-capture
+      - format:
+          name: Format
+          context: vulnmap-iac-capture
+      - build:
+          name: Build
+          context: vulnmap-iac-capture
+      - test:
+          name: Test
+          context: vulnmap-iac-capture
+      - lint:
+          name: Lint
+          context: vulnmap-iac-capture
+      - vulnmap-oss:
+          name: Vulnmap Open Source
+          context: vulnmap-iac-capture
+      - vulnmap-code:
+          name: Vulnmap Code
+          context: vulnmap-iac-capture
+      - release:
+          name: Release
+          context: vulnmap-iac-capture
+          requires:
+              - Tidy
+              - Format
+              - Build
+              - Test
+              - Lint
+              - Vulnmap Open Source
+              - Vulnmap Code
